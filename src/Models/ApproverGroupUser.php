@@ -5,14 +5,14 @@ namespace AsetKita\LaravelApprovalWorkflow\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ApprovalActiveUser extends Model
+class ApproverGroupUser extends Model
 {
     /**
      * The table associated with the model.
      *
      * @var string
      */
-    protected $table = 'wf_approval_active_users';
+    protected $table = 'wf_approver_group_users';
 
     /**
      * Indicates if the model should be timestamped.
@@ -27,7 +27,7 @@ class ApprovalActiveUser extends Model
      * @var array<int, string>
      */
     protected $fillable = [
-        'approval_id',
+        'approver_group_id',
         'user_id',
     ];
 
@@ -37,20 +37,20 @@ class ApprovalActiveUser extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'approval_id' => 'integer',
+        'approver_group_id' => 'integer',
         'user_id' => 'integer',
     ];
 
     /**
-     * Get the approval that owns the active user.
+     * Get the approver group that owns the group user.
      */
-    public function approval(): BelongsTo
+    public function approverGroup(): BelongsTo
     {
-        return $this->belongsTo(Approval::class, 'approval_id');
+        return $this->belongsTo(ApproverGroup::class, 'approver_group_id');
     }
 
     /**
-     * Get the user that owns the active user.
+     * Get the user that owns the group user.
      */
     public function user(): BelongsTo
     {

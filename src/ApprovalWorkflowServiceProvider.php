@@ -3,41 +3,42 @@
 namespace AsetKita\LaravelApprovalWorkflow;
 
 use Illuminate\Support\ServiceProvider;
-use AsetKita\LaravelApprovalWorkflow\Services\ApprovalService;
+use AsetKita\LaravelApprovalWorkflow\Services\ApprovalHandler;
 
 class ApprovalWorkflowServiceProvider extends ServiceProvider
 {
     /**
-     * Register any application services.
+     * Register services.
      */
     public function register(): void
     {
         $this->mergeConfigFrom(
-            __DIR__.'/../config/approval-workflow.php', 'approval-workflow'
+            __DIR__.'/../config/approval-workflow.php',
+            'approval-workflow'
         );
 
-        $this->app->singleton(ApprovalService::class, function ($app) {
-            return new ApprovalService();
+        $this->app->singleton('approval-workflow', function ($app) {
+            $companyId = config('approval-workflow.default_company_id', 1);
+            return new ApprovalHandler($companyId);
         });
-
-        $this->app->alias(ApprovalService::class, 'approval-workflow');
     }
 
     /**
-     * Bootstrap any application services.
+     * Bootstrap services.
      */
     public function boot(): void
     {
+        // Publish config
+        $this->publishes([
+            __DIR__.'/../config/approval-workflow.php' => config_path('approval-workflow.php'),
+        ], 'approval-workflow-config');
+
+        // Publish migrations
+        $this->publishes([
+            __DIR__.'/../database/migrations' => database_path('migrations'),
+        ], 'approval-workflow-migrations');
+
+        // Load migrations
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
-
-        if ($this->app->runningInConsole()) {
-            $this->publishes([
-                __DIR__.'/../config/approval-workflow.php' => config_path('approval-workflow.php'),
-            ], 'approval-workflow-config');
-
-            $this->publishes([
-                __DIR__.'/../database/migrations' => database_path('migrations'),
-            ], 'approval-workflow-migrations');
-        }
     }
 }

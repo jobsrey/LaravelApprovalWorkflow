@@ -13,12 +13,16 @@ return new class extends Migration
     {
         Schema::create('wf_approval_active_users', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('approval_id')->constrained('wf_approvals')->onDelete('cascade');
+            $table->unsignedBigInteger('approval_id');
             $table->unsignedBigInteger('user_id');
-            $table->timestamps();
-
-            $table->unique(['approval_id', 'user_id']);
-            $table->index('user_id');
+            
+            $table->foreign('approval_id')
+                ->references('id')
+                ->on('wf_approvals')
+                ->onDelete('cascade')
+                ->onUpdate('cascade');
+            
+            $table->index(['approval_id', 'user_id']);
         });
     }
 

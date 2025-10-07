@@ -1,0 +1,33 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('wf_department_users', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('department_id');
+            $table->unsignedBigInteger('user_id');
+            $table->enum('job_level', ['STAFF', 'MANAGER', 'HEAD']);
+            $table->unsignedBigInteger('company_id');
+            
+            $table->index(['department_id', 'user_id']);
+            $table->index('company_id');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('wf_department_users');
+    }
+};

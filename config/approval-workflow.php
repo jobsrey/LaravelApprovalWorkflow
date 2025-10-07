@@ -6,8 +6,8 @@ return [
     | Default Company ID
     |--------------------------------------------------------------------------
     |
-    | This value is used as the default company ID when creating approvals.
-    | You can override this by passing a company_id parameter to the service.
+    | This value is the default company ID used when creating a new approval
+    | handler instance. You can override this when instantiating the handler.
     |
     */
     'default_company_id' => env('APPROVAL_WORKFLOW_COMPANY_ID', 1),
@@ -17,77 +17,40 @@ return [
     | User Model
     |--------------------------------------------------------------------------
     |
-    | This is the User model used by the approval workflow. You can change
-    | this to your custom User model if needed.
+    | The User model to use for the approval workflow. This should be the
+    | full class name of your User model.
     |
     */
-    'user_model' => env('APPROVAL_WORKFLOW_USER_MODEL', 'App\\Models\\User'),
+    'user_model' => env('APPROVAL_WORKFLOW_USER_MODEL', \App\Models\User::class),
 
     /*
     |--------------------------------------------------------------------------
-    | Media Collections
+    | Media Library Disk
     |--------------------------------------------------------------------------
     |
-    | Configuration for Spatie Media Library collections used in approval
-    | history for file attachments.
+    | The disk to use for storing media files. This should match one of the
+    | disks configured in your config/filesystems.php file.
     |
     */
-    'media' => [
-        'collection_name' => 'files',
-        'allowed_mime_types' => [
-            'application/pdf',
-            'image/jpeg',
-            'image/png',
-            'image/gif',
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'text/plain'
-        ],
-        'max_file_size' => 10 * 1024 * 1024, // 10MB in bytes
-    ],
+    'media_disk' => env('APPROVAL_WORKFLOW_MEDIA_DISK', 'public'),
 
     /*
     |--------------------------------------------------------------------------
-    | Notifications
+    | Approval Notifications
     |--------------------------------------------------------------------------
     |
-    | Configuration for notifications sent during approval workflow.
+    | Enable or disable automatic notifications when approval status changes.
     |
     */
-    'notifications' => [
-        'enabled' => env('APPROVAL_WORKFLOW_NOTIFICATIONS', true),
-        'channels' => ['mail', 'database'], // Available: mail, database, slack, etc.
-    ],
+    'notifications_enabled' => env('APPROVAL_WORKFLOW_NOTIFICATIONS', false),
 
     /*
     |--------------------------------------------------------------------------
-    | System Groups
+    | Notification Channels
     |--------------------------------------------------------------------------
     |
-    | Configuration for system-defined user groups that can be used in
-    | approval flows.
+    | The channels to use when sending notifications. Options: mail, database, etc.
     |
     */
-    'system_groups' => [
-        'department-manager' => 'Department Manager',
-        'department-head' => 'Department Head',
-        'asset-coordinator' => 'Asset Coordinator',
-        'origin-asset-user' => 'Origin Asset User',
-        'destination-asset-user' => 'Destination Asset User',
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Expression Language
-    |--------------------------------------------------------------------------
-    |
-    | Configuration for the Symfony Expression Language used in flow step
-    | conditions.
-    |
-    */
-    'expression_language' => [
-        'cache' => env('APPROVAL_WORKFLOW_EXPRESSION_CACHE', true),
-    ],
+    'notification_channels' => ['mail', 'database'],
 ];

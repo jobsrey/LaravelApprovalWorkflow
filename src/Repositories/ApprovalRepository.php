@@ -4,18 +4,21 @@ namespace AsetKita\LaravelApprovalWorkflow\Repositories;
 
 use AsetKita\LaravelApprovalWorkflow\Models\Approval;
 use AsetKita\LaravelApprovalWorkflow\Models\ApprovalActiveUser;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class ApprovalRepository
 {
     /**
-     * Get current status of an approval
+     * Get current status of an approval.
      */
-    public static function getCurrentStatus(int $approvalId): array
+    public function getCurrentStatus(int $approvalId): array
     {
-        $approval = Approval::with(['currentStep', 'flow'])
-            ->findOrFail($approvalId);
-
+        $approval = Approval::with('currentStep')->find($approvalId);
+        
+        if (!$approval) {
+            throw new \Exception("Approval with ID '$approvalId' not found!");
+        }
+        
         return [
             'id' => $approval->id,
             'flow_id' => $approval->flow_id,
@@ -27,12 +30,12 @@ class ApprovalRepository
     }
 
     /**
-     * Get running approvals for a company
+     * Get running approvals for a company.
      */
-    public static function getRunningApprovals(int $companyId): Collection
+    public function getRunningApprovals(int $companyId): array
     {
-        return Approval::running($companyId)
-            ->with(['currentStep', 'flow'])
+        return Approval::where('company_id', $companyId)
+            ->where('status', 'ON_PROGRESS')
             ->get()
             ->map(function ($approval) {
                 return [
@@ -42,46 +45,47 @@ class ApprovalRepository
                     'flow_step_id' => $approval->flow_step_id,
                     'parameters' => $approval->parameters,
                 ];
-            });
+            })
+            ->toArray();
     }
 
     /**
-     * Create new approval
+     * Insert a new approval.
      */
-    public static function insert(int $companyId, int $flowId, int $userId, ?array $parameters): int
+    public function insert(int $companyId, int $flowId, int $userId, ?array $parameters): int
     {
         $approval = Approval::create([
             'company_id' => $companyId,
             'flow_id' => $flowId,
-            'user_id' => $userId,
             'status' => 'ON_PROGRESS',
+            'user_id' => $userId,
             'parameters' => $parameters,
         ]);
-
+        
         return $approval->id;
     }
 
     /**
-     * Update approval
+     * Update an approval.
      */
-    public static function update(int $approvalId, string $status, ?int $flowStepId, ?array $parameters): void
+    public function update(int $approvalId, string $status, ?int $flowStepId, ?array $parameters): void
     {
-        $updateData = [
+        $data = [
             'status' => $status,
             'flow_step_id' => $flowStepId,
         ];
-
+        
         if ($parameters !== null) {
-            $updateData['parameters'] = $parameters;
+            $data['parameters'] = $parameters;
         }
-
-        Approval::where('id', $approvalId)->update($updateData);
+        
+        Approval::where('id', $approvalId)->update($data);
     }
 
     /**
-     * Check if user has permission for approval
+     * Check if user has permission to approve.
      */
-    public static function isUserHasPermission(int $approvalId, int $userId): bool
+    public function isUserHasPermission(int $approvalId, int $userId): bool
     {
         return ApprovalActiveUser::where('approval_id', $approvalId)
             ->where('user_id', $userId)
@@ -89,63 +93,55 @@ class ApprovalRepository
     }
 
     /**
-     * Get current approvers
+     * Get current approvers for an approval.
      */
-    public static function getCurrentApprovers(int $approvalId): array
+    public function getCurrentApprovers(int $approvalId): array
     {
-        $userModel = config('approval-workflow.user_model', 'App\\Models\\User');
+        $userModel = config('approval-workflow.user_model', \App\Models\User::class);
         
-        return ApprovalActiveUser::where('approval_id', $approvalId)
-            ->join('users', 'users.id', '=', 'wf_approval_active_users.user_id')
-            ->select([
-                'users.id as user_id',
-                'users.name',
-                'users.email',
-                'users.fcmToken'
-            ])
+        return DB::table('wf_approval_active_users as waau')
+            ->join('users as u', 'u.id', '=', 'waau.user_id')
+            ->where('waau.approval_id', $approvalId)
+            ->select('u.id as user_id', 'u.name', 'u.email')
             ->get()
+            ->map(fn($user) => (array) $user)
             ->toArray();
     }
 
     /**
-     * Get approval owner
+     * Get owner of an approval.
      */
-    public static function getOwner(int $approvalId): ?array
+    public function getOwner(int $approvalId): ?array
     {
         $approval = Approval::with('owner')->find($approvalId);
         
         if (!$approval || !$approval->owner) {
             return null;
         }
-
+        
         return [
             'user_id' => $approval->owner->id,
-            'name' => $approval->owner->name,
-            'email' => $approval->owner->email,
-            'fcmToken' => $approval->owner->fcmToken ?? null,
+            'name' => $approval->owner->name ?? null,
+            'email' => $approval->owner->email ?? null,
         ];
     }
 
     /**
-     * Assign approvers to approval
+     * Assign approvers to an approval.
      */
-    public static function assignApprovers(int $approvalId, array $approvers): void
+    public function assignApprovers(int $approvalId, array $approvers): void
     {
-        // Remove existing approvers
+        // Delete existing approvers
         ApprovalActiveUser::where('approval_id', $approvalId)->delete();
-
-        // Add new approvers
+        
+        // Assign new approvers
         if (!empty($approvers)) {
-            $approverData = collect($approvers)->map(function ($approver) use ($approvalId) {
-                return [
+            foreach ($approvers as $approver) {
+                ApprovalActiveUser::create([
                     'approval_id' => $approvalId,
                     'user_id' => $approver['id'],
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
-            })->toArray();
-
-            ApprovalActiveUser::insert($approverData);
+                ]);
+            }
         }
     }
 }

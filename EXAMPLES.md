@@ -1,560 +1,636 @@
-# Contoh Penggunaan Laravel Approval Workflow
+# Code Examples - Laravel Approval Workflow
 
-## 1. Setup Dasar
+Practical copy-paste examples for common scenarios.
 
-### Controller untuk Purchase Request
+## Example 1: Purchase Request System
+
+### Database Seeder
 
 ```php
-<?php
+use AsetKita\LaravelApprovalWorkflow\Models\{Flow, FlowStep, FlowStepApprover};
 
+// Create Purchase Request Flow
+$flow = Flow::create([
+    'type' => 'PR',
+    'company_id' => 1,
+    'is_active' => 1,
+    'label' => 'Purchase Request',
+]);
+
+// Step 1: Manager
+$step1 = FlowStep::create([
+    'order' => 1,
+    'flow_id' => $flow->id,
+    'name' => 'Manager Approval',
+]);
+
+FlowStepApprover::create([
+    'flow_step_id' => $step1->id,
+    'type' => 'SYSTEM_GROUP',
+    'data' => 'department-manager',
+]);
+
+// Step 2: Finance (if > 5000)
+$step2 = FlowStep::create([
+    'order' => 2,
+    'flow_id' => $flow->id,
+    'name' => 'Finance Approval',
+    'condition' => 'amount > 5000',
+]);
+
+FlowStepApprover::create([
+    'flow_step_id' => $step2->id,
+    'type' => 'USER',
+    'data' => '10',
+]);
+```
+
+### Controller
+
+```php
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use AsetKita\LaravelApprovalWorkflow\Facades\ApprovalWorkflow;
-use AsetKita\LaravelApprovalWorkflow\Services\ApprovalService;
+use AsetKita\LaravelApprovalWorkflow\Services\ApprovalHandler;
 
 class PurchaseRequestController extends Controller
 {
     public function store(Request $request)
     {
-        $request->validate([
-            'description' => 'required|string',
+        $validated = $request->validate([
+            'items' => 'required|array',
             'amount' => 'required|numeric|min:0',
-            'department_id' => 'required|exists:departments,id',
-            'attachment' => 'nullable|file|max:10240', // 10MB max
+            'notes' => 'nullable|string',
         ]);
 
+        $handler = new ApprovalHandler(auth()->user()->company_id);
+
         try {
-            // Start approval workflow
-            $result = ApprovalWorkflow::start('purchase-request', auth()->id(), [
-                'departmentId' => $request->department_id,
-                'amount' => $request->amount,
-                'description' => $request->description,
+            $result = $handler->start('PR', auth()->id(), [
+                'departmentId' => auth()->user()->department_id,
+                'amount' => $validated['amount'],
+                'items' => $validated['items'],
+            ]);
+
+            // Save to your PR table
+            PurchaseRequest::create([
+                'user_id' => auth()->id(),
+                'approval_id' => $result['id'],
+                'items' => $validated['items'],
+                'amount' => $validated['amount'],
+                'status' => 'pending',
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Purchase request submitted for approval',
-                'data' => $result
+                'approval_id' => $result['id'],
+                'current_approvers' => $result['stakeholders']['currentApprovers'],
             ]);
-
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 400);
+            return response()->json(['error' => $e->getMessage()], 400);
         }
     }
 
     public function approve(Request $request, $approvalId)
     {
-        $request->validate([
-            'notes' => 'nullable|string',
-            'attachment' => 'nullable|file|max:10240',
-        ]);
+        $handler = new ApprovalHandler(auth()->user()->company_id);
 
         try {
-            $result = ApprovalWorkflow::approve(
+            $result = $handler->approve(
                 $approvalId,
                 auth()->id(),
-                $request->notes,
-                $request->file('attachment')
+                $request->input('notes')
             );
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Approval submitted successfully',
-                'data' => $result
-            ]);
+            // Update PR status if completed
+            if ($result['status'] === 'APPROVED') {
+                PurchaseRequest::where('approval_id', $approvalId)
+                    ->update(['status' => 'approved']);
+            }
 
+            return response()->json(['success' => true, 'result' => $result]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 400);
+            return response()->json(['error' => $e->getMessage()], 400);
         }
     }
 
     public function reject(Request $request, $approvalId)
     {
-        $request->validate([
-            'notes' => 'required|string',
-            'attachment' => 'nullable|file|max:10240',
+        $handler = new ApprovalHandler(auth()->user()->company_id);
+
+        try {
+            $result = $handler->reject(
+                $approvalId,
+                auth()->id(),
+                $request->input('notes')
+            );
+
+            PurchaseRequest::where('approval_id', $approvalId)
+                ->update(['status' => 'rejected']);
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    public function history($approvalId)
+    {
+        $handler = new ApprovalHandler(auth()->user()->company_id);
+        $histories = $handler->getApprovalHistories($approvalId);
+
+        return response()->json(['histories' => $histories]);
+    }
+}
+```
+
+### Routes
+
+```php
+Route::middleware(['auth'])->group(function () {
+    Route::post('purchase-requests', [PurchaseRequestController::class, 'store']);
+    Route::post('purchase-requests/{approvalId}/approve', [PurchaseRequestController::class, 'approve']);
+    Route::post('purchase-requests/{approvalId}/reject', [PurchaseRequestController::class, 'reject']);
+    Route::get('purchase-requests/{approvalId}/history', [PurchaseRequestController::class, 'history']);
+});
+```
+
+## Example 2: Leave Request with Livewire
+
+### Livewire Component
+
+```php
+namespace App\Http\Livewire;
+
+use Livewire\Component;
+use AsetKita\LaravelApprovalWorkflow\Services\ApprovalHandler;
+use AsetKita\LaravelApprovalWorkflow\Models\Approval;
+use Carbon\Carbon;
+
+class LeaveRequestForm extends Component
+{
+    public $startDate;
+    public $endDate;
+    public $reason;
+    public $days;
+
+    protected $rules = [
+        'startDate' => 'required|date',
+        'endDate' => 'required|date|after:startDate',
+        'reason' => 'required|string|min:10',
+    ];
+
+    public function updated($propertyName)
+    {
+        $this->validateOnly($propertyName);
+        
+        if ($this->startDate && $this->endDate) {
+            $this->days = Carbon::parse($this->endDate)
+                ->diffInDays($this->startDate) + 1;
+        }
+    }
+
+    public function submit()
+    {
+        $this->validate();
+
+        $handler = new ApprovalHandler(auth()->user()->company_id);
+
+        try {
+            $result = $handler->start('LEAVE', auth()->id(), [
+                'departmentId' => auth()->user()->department_id,
+                'days' => $this->days,
+                'startDate' => $this->startDate,
+                'endDate' => $this->endDate,
+                'reason' => $this->reason,
+            ]);
+
+            LeaveRequest::create([
+                'user_id' => auth()->id(),
+                'approval_id' => $result['id'],
+                'start_date' => $this->startDate,
+                'end_date' => $this->endDate,
+                'days' => $this->days,
+                'reason' => $this->reason,
+                'status' => 'pending',
+            ]);
+
+            session()->flash('message', 'Leave request submitted successfully!');
+            $this->reset();
+            $this->emit('leaveRequestCreated');
+        } catch (\Exception $e) {
+            session()->flash('error', $e->getMessage());
+        }
+    }
+
+    public function render()
+    {
+        return view('livewire.leave-request-form');
+    }
+}
+```
+
+### Approval Card Component
+
+```php
+namespace App\Http\Livewire;
+
+use Livewire\Component;
+use AsetKita\LaravelApprovalWorkflow\Services\ApprovalHandler;
+use AsetKita\LaravelApprovalWorkflow\Models\Approval;
+
+class ApprovalCard extends Component
+{
+    public $approvalId;
+    public $approval;
+    public $histories;
+    public $path;
+    public $notes = '';
+    public $canApprove = false;
+
+    public function mount($approvalId)
+    {
+        $this->approvalId = $approvalId;
+        $this->loadApproval();
+    }
+
+    public function loadApproval()
+    {
+        $handler = new ApprovalHandler(auth()->user()->company_id);
+        
+        $this->approval = Approval::with(['flow', 'owner', 'activeUsers'])->find($this->approvalId);
+        $this->histories = $handler->getApprovalHistories($this->approvalId);
+        $this->path = $handler->getApprovalPath($this->approvalId);
+        
+        $this->canApprove = $this->approval->activeUsers()
+            ->where('user_id', auth()->id())
+            ->exists();
+    }
+
+    public function approve()
+    {
+        try {
+            $handler = new ApprovalHandler(auth()->user()->company_id);
+            $handler->approve($this->approvalId, auth()->id(), $this->notes);
+            
+            $this->notes = '';
+            $this->loadApproval();
+            $this->emit('approvalUpdated');
+            session()->flash('message', 'Approved successfully!');
+        } catch (\Exception $e) {
+            session()->flash('error', $e->getMessage());
+        }
+    }
+
+    public function reject()
+    {
+        $this->validate(['notes' => 'required|string|min:5']);
+
+        try {
+            $handler = new ApprovalHandler(auth()->user()->company_id);
+            $handler->reject($this->approvalId, auth()->id(), $this->notes);
+            
+            $this->notes = '';
+            $this->loadApproval();
+            $this->emit('approvalUpdated');
+            session()->flash('message', 'Rejected successfully!');
+        } catch (\Exception $e) {
+            session()->flash('error', $e->getMessage());
+        }
+    }
+
+    public function render()
+    {
+        return view('livewire.approval-card');
+    }
+}
+```
+
+## Example 3: API Controller
+
+```php
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use AsetKita\LaravelApprovalWorkflow\Services\ApprovalHandler;
+use AsetKita\LaravelApprovalWorkflow\Models\Approval;
+
+class ApprovalController extends Controller
+{
+    protected $handler;
+
+    public function __construct()
+    {
+        $this->handler = new ApprovalHandler(auth()->user()->company_id ?? 1);
+    }
+
+    /**
+     * Get my pending approvals
+     */
+    public function myPending()
+    {
+        $approvals = Approval::onProgress()
+            ->whereHas('activeUsers', function($q) {
+                $q->where('user_id', auth()->id());
+            })
+            ->with(['flow', 'owner'])
+            ->get();
+
+        return response()->json(['data' => $approvals]);
+    }
+
+    /**
+     * Get my created approvals
+     */
+    public function myCreated()
+    {
+        $approvals = Approval::where('user_id', auth()->id())
+            ->with(['flow', 'currentStep'])
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return response()->json(['data' => $approvals]);
+    }
+
+    /**
+     * Get approval detail
+     */
+    public function show($id)
+    {
+        $approval = Approval::with(['flow', 'owner', 'activeUsers', 'currentStep'])
+            ->findOrFail($id);
+
+        $histories = $this->handler->getApprovalHistories($id);
+        $path = $this->handler->getApprovalPath($id);
+
+        $canApprove = $approval->activeUsers()
+            ->where('user_id', auth()->id())
+            ->exists();
+
+        return response()->json([
+            'approval' => $approval,
+            'histories' => $histories,
+            'path' => $path,
+            'can_approve' => $canApprove,
+        ]);
+    }
+
+    /**
+     * Approve
+     */
+    public function approve(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'notes' => 'nullable|string',
         ]);
 
         try {
-            $result = ApprovalWorkflow::reject(
-                $approvalId,
+            $result = $this->handler->approve(
+                $id,
                 auth()->id(),
-                $request->notes,
-                $request->file('attachment')
+                $validated['notes'] ?? null
             );
 
             return response()->json([
                 'success' => true,
-                'message' => 'Rejection submitted successfully',
-                'data' => $result
+                'message' => 'Approved successfully',
+                'result' => $result,
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 400);
         }
     }
 
-    public function show($approvalId)
+    /**
+     * Reject
+     */
+    public function reject(Request $request, $id)
     {
+        $validated = $request->validate([
+            'notes' => 'required|string|min:5',
+        ]);
+
         try {
-            $path = ApprovalWorkflow::getApprovalPath($approvalId);
-            $histories = ApprovalWorkflow::getApprovalHistories($approvalId);
+            $result = $this->handler->reject(
+                $id,
+                auth()->id(),
+                $validated['notes']
+            );
 
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'path' => $path,
-                    'histories' => $histories
-                ]
+                'message' => 'Rejected successfully',
+                'result' => $result,
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Reset/Resubmit
+     */
+    public function reset(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'notes' => 'nullable|string',
+            'parameters' => 'nullable|array',
+        ]);
+
+        try {
+            $result = $this->handler->reset(
+                $id,
+                auth()->id(),
+                $validated['notes'] ?? null,
+                null,
+                $validated['parameters'] ?? null
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Resubmitted successfully',
+                'result' => $result,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
             ], 400);
         }
     }
 }
 ```
 
-## 2. Setup Flow dengan Seeder
+### API Routes
 
 ```php
-<?php
-
-namespace Database\Seeders;
-
-use Illuminate\Database\Seeder;
-use AsetKita\LaravelApprovalWorkflow\Models\Flow;
-use AsetKita\LaravelApprovalWorkflow\Models\FlowStep;
-use AsetKita\LaravelApprovalWorkflow\Models\FlowStepUser;
-
-class ApprovalFlowSeeder extends Seeder
-{
-    public function run()
-    {
-        // Purchase Request Flow
-        $flow = Flow::create([
-            'company_id' => 1,
-            'type' => 'purchase-request',
-            'name' => 'Purchase Request Approval Flow',
-            'is_active' => true,
-        ]);
-
-        // Step 1: Department Manager (untuk amount > 100,000)
-        $step1 = FlowStep::create([
-            'flow_id' => $flow->id,
-            'order' => 1,
-            'name' => 'Department Manager Approval',
-            'condition' => 'amount > 100000',
-        ]);
-
-        FlowStepUser::create([
-            'flow_step_id' => $step1->id,
-            'type' => 'SYSTEM_GROUP',
-            'user_group_id' => 'department-manager',
-        ]);
-
-        // Step 2: Department Head (untuk amount > 500,000)
-        $step2 = FlowStep::create([
-            'flow_id' => $flow->id,
-            'order' => 2,
-            'name' => 'Department Head Approval',
-            'condition' => 'amount > 500000',
-        ]);
-
-        FlowStepUser::create([
-            'flow_step_id' => $step2->id,
-            'type' => 'SYSTEM_GROUP',
-            'user_group_id' => 'department-head',
-        ]);
-
-        // Step 3: Finance Director (untuk amount > 2,000,000)
-        $step3 = FlowStep::create([
-            'flow_id' => $flow->id,
-            'order' => 3,
-            'name' => 'Finance Director Approval',
-            'condition' => 'amount > 2000000',
-        ]);
-
-        FlowStepUser::create([
-            'flow_step_id' => $step3->id,
-            'type' => 'USER',
-            'user_id' => 1, // Finance Director user ID
-        ]);
-
-        // Asset Transfer Flow
-        $assetFlow = Flow::create([
-            'company_id' => 1,
-            'type' => 'asset-transfer',
-            'name' => 'Asset Transfer Approval Flow',
-            'is_active' => true,
-        ]);
-
-        // Step 1: Origin Asset User
-        $assetStep1 = FlowStep::create([
-            'flow_id' => $assetFlow->id,
-            'order' => 1,
-            'name' => 'Origin User Confirmation',
-        ]);
-
-        FlowStepUser::create([
-            'flow_step_id' => $assetStep1->id,
-            'type' => 'SYSTEM_GROUP',
-            'user_group_id' => 'origin-asset-user',
-        ]);
-
-        // Step 2: Asset Coordinator
-        $assetStep2 = FlowStep::create([
-            'flow_id' => $assetFlow->id,
-            'order' => 2,
-            'name' => 'Asset Coordinator Approval',
-        ]);
-
-        FlowStepUser::create([
-            'flow_step_id' => $assetStep2->id,
-            'type' => 'SYSTEM_GROUP',
-            'user_group_id' => 'asset-coordinator',
-        ]);
-
-        // Step 3: Destination Asset User
-        $assetStep3 = FlowStep::create([
-            'flow_id' => $assetFlow->id,
-            'order' => 3,
-            'name' => 'Destination User Acceptance',
-        ]);
-
-        FlowStepUser::create([
-            'flow_step_id' => $assetStep3->id,
-            'type' => 'SYSTEM_GROUP',
-            'user_group_id' => 'destination-asset-user',
-        ]);
-    }
-}
+Route::middleware(['auth:sanctum'])->prefix('api/approvals')->group(function () {
+    Route::get('my-pending', [ApprovalController::class, 'myPending']);
+    Route::get('my-created', [ApprovalController::class, 'myCreated']);
+    Route::get('{id}', [ApprovalController::class, 'show']);
+    Route::post('{id}/approve', [ApprovalController::class, 'approve']);
+    Route::post('{id}/reject', [ApprovalController::class, 'reject']);
+    Route::post('{id}/reset', [ApprovalController::class, 'reset']);
+});
 ```
 
-## 3. Model Extension untuk User
+## Example 4: Using Facade
 
 ```php
-<?php
+use AsetKita\LaravelApprovalWorkflow\Facades\ApprovalWorkflow;
 
-namespace App\Models;
+// Start approval
+$result = ApprovalWorkflow::start('PR', auth()->id(), [
+    'departmentId' => 10,
+    'amount' => 5000,
+]);
 
-use Illuminate\Foundation\Auth\User as Authenticatable;
+// Approve
+$result = ApprovalWorkflow::approve($approvalId, auth()->id(), 'Approved');
+
+// Reject
+$result = ApprovalWorkflow::reject($approvalId, auth()->id(), 'Rejected');
+
+// Get histories
+$histories = ApprovalWorkflow::getApprovalHistories($approvalId);
+
+// Get path
+$path = ApprovalWorkflow::getApprovalPath($approvalId);
+```
+
+## Example 5: Custom Query
+
+```php
 use AsetKita\LaravelApprovalWorkflow\Models\Approval;
+
+// Get all on-progress approvals for my department
+$approvals = Approval::onProgress()
+    ->whereHas('owner', function($q) {
+        $q->where('department_id', auth()->user()->department_id);
+    })
+    ->with(['flow', 'owner', 'activeUsers'])
+    ->get();
+
+// Get completed approvals this month
+$approvals = Approval::approved()
+    ->whereHas('histories', function($q) {
+        $q->where('flag', 'done')
+          ->where('date_time', '>=', now()->startOfMonth()->timestamp);
+    })
+    ->get();
+
+// Get rejected approvals by specific user
+$approvals = Approval::rejected()
+    ->whereHas('histories', function($q) use ($userId) {
+        $q->where('flag', 'rejected')
+          ->where('user_id', $userId);
+    })
+    ->get();
+```
+
+## Example 6: Add File Attachment
+
+```php
 use AsetKita\LaravelApprovalWorkflow\Models\ApprovalHistory;
-use AsetKita\LaravelApprovalWorkflow\Models\ApprovalActiveUser;
 
-class User extends Authenticatable
-{
-    // ... existing code
+// Get history record
+$history = ApprovalHistory::find($historyId);
 
-    /**
-     * Approvals owned by this user
-     */
-    public function ownedApprovals()
-    {
-        return $this->hasMany(Approval::class, 'user_id');
-    }
+// Add single file
+$history->addMedia($request->file('attachment'))
+    ->toMediaCollection('attachments');
 
-    /**
-     * Approvals where this user is an active approver
-     */
-    public function pendingApprovals()
-    {
-        return $this->belongsToMany(Approval::class, 'wf_approval_active_users', 'user_id', 'approval_id');
-    }
+// Add multiple files
+foreach ($request->file('attachments') as $file) {
+    $history->addMedia($file)
+        ->toMediaCollection('attachments');
+}
 
-    /**
-     * Approval histories created by this user
-     */
-    public function approvalHistories()
-    {
-        return $this->hasMany(ApprovalHistory::class, 'user_id');
-    }
+// Get attachments
+$attachments = $history->getMedia('attachments');
 
-    /**
-     * Get pending approvals count
-     */
-    public function getPendingApprovalsCountAttribute()
-    {
-        return $this->pendingApprovals()->where('status', 'ON_PROGRESS')->count();
-    }
-
-    /**
-     * Check if user can approve specific approval
-     */
-    public function canApprove($approvalId)
-    {
-        return ApprovalActiveUser::where('approval_id', $approvalId)
-            ->where('user_id', $this->id)
-            ->exists();
-    }
+// Get URLs
+foreach ($attachments as $media) {
+    echo $media->getUrl();
 }
 ```
 
-## 4. Blade Template untuk Approval
-
-```blade
-{{-- resources/views/approvals/show.blade.php --}}
-@extends('layouts.app')
-
-@section('content')
-<div class="container">
-    <div class="row">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Approval Details #{{ $approval['id'] }}</h5>
-                    <span class="badge badge-{{ $approval['status'] == 'APPROVED' ? 'success' : ($approval['status'] == 'REJECTED' ? 'danger' : 'warning') }}">
-                        {{ $approval['status'] }}
-                    </span>
-                </div>
-                <div class="card-body">
-                    <!-- Approval Path -->
-                    <h6>Approval Path</h6>
-                    <div class="approval-path">
-                        @foreach($approvalPath as $step)
-                        <div class="step-item {{ $step['type'] }}">
-                            <div class="step-header">
-                                <strong>{{ $step['name'] }}</strong>
-                                @if($step['type'] == 'current')
-                                    <span class="badge badge-primary">Current</span>
-                                @elseif($step['type'] == 'approved')
-                                    <span class="badge badge-success">Approved</span>
-                                @elseif($step['type'] == 'rejected')
-                                    <span class="badge badge-danger">Rejected</span>
-                                @elseif($step['type'] == 'incoming')
-                                    <span class="badge badge-secondary">Pending</span>
-                                @endif
-                            </div>
-                            
-                            @if($step['approver_name'])
-                            <div class="step-approver">
-                                <small>
-                                    By: {{ $step['approver_name'] }} ({{ $step['approver_email'] }})
-                                    <br>
-                                    Time: {{ $step['approval_time'] }}
-                                </small>
-                            </div>
-                            @endif
-
-                            @if($step['approval_notes'])
-                            <div class="step-notes">
-                                <small><strong>Notes:</strong> {{ $step['approval_notes'] }}</small>
-                            </div>
-                            @endif
-
-                            @if(isset($step['attached_files']) && count($step['attached_files']) > 0)
-                            <div class="step-files">
-                                <small><strong>Attachments:</strong></small>
-                                @foreach($step['attached_files'] as $file)
-                                <div class="file-item">
-                                    <a href="{{ $file['url'] }}" target="_blank">
-                                        {{ $file['name'] }}
-                                    </a>
-                                    @if($file['thumb_url'])
-                                    <img src="{{ $file['thumb_url'] }}" alt="Thumbnail" class="file-thumb">
-                                    @endif
-                                </div>
-                                @endforeach
-                            </div>
-                            @endif
-                        </div>
-                        @endforeach
-                    </div>
-
-                    <!-- Action Buttons -->
-                    @if($canApprove && $approval['status'] == 'ON_PROGRESS')
-                    <div class="mt-4">
-                        <h6>Actions</h6>
-                        <form id="approvalForm" method="POST" enctype="multipart/form-data">
-                            @csrf
-                            <div class="form-group">
-                                <label for="notes">Notes</label>
-                                <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label for="attachment">Attachment (Optional)</label>
-                                <input type="file" class="form-control-file" id="attachment" name="attachment">
-                            </div>
-                            <div class="btn-group">
-                                <button type="button" class="btn btn-success" onclick="submitApproval('approve')">
-                                    Approve
-                                </button>
-                                <button type="button" class="btn btn-danger" onclick="submitApproval('reject')">
-                                    Reject
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                    @endif
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-header">
-                    <h6>History</h6>
-                </div>
-                <div class="card-body">
-                    @foreach($histories as $history)
-                    <div class="history-item">
-                        <div class="history-header">
-                            <strong>{{ $history['title'] }}</strong>
-                            <small class="text-muted">{{ $history['date_time'] }}</small>
-                        </div>
-                        @if($history['user_name'])
-                        <div class="history-user">
-                            <small>By: {{ $history['user_name'] }}</small>
-                        </div>
-                        @endif
-                        @if($history['notes'])
-                        <div class="history-notes">
-                            <small>{{ $history['notes'] }}</small>
-                        </div>
-                        @endif
-                        @if(isset($history['attached_files']) && count($history['attached_files']) > 0)
-                        <div class="history-files">
-                            @foreach($history['attached_files'] as $file)
-                            <a href="{{ $file['url'] }}" target="_blank" class="file-link">
-                                {{ $file['name'] }}
-                            </a>
-                            @endforeach
-                        </div>
-                        @endif
-                    </div>
-                    <hr>
-                    @endforeach
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-function submitApproval(action) {
-    const form = document.getElementById('approvalForm');
-    const formData = new FormData(form);
-    
-    const url = action === 'approve' 
-        ? `/approvals/{{ $approval['id'] }}/approve`
-        : `/approvals/{{ $approval['id'] }}/reject`;
-    
-    fetch(url, {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert(data.message);
-            location.reload();
-        } else {
-            alert('Error: ' + data.message);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred');
-    });
-}
-</script>
-@endsection
-```
-
-## 5. API Resource untuk JSON Response
+## Example 7: Department Setup
 
 ```php
-<?php
+use AsetKita\LaravelApprovalWorkflow\Models\DepartmentUser;
 
-namespace App\Http\Resources;
+// Add users to IT Department
+$users = [
+    ['user_id' => 10, 'job_level' => 'STAFF'],
+    ['user_id' => 11, 'job_level' => 'STAFF'],
+    ['user_id' => 12, 'job_level' => 'MANAGER'],
+    ['user_id' => 13, 'job_level' => 'HEAD'],
+];
 
-use Illuminate\Http\Resources\Json\JsonResource;
-
-class ApprovalResource extends JsonResource
-{
-    public function toArray($request)
-    {
-        return [
-            'id' => $this['id'],
-            'status' => $this['status'],
-            'flow_step_name' => $this['flow_step_name'],
-            'parameters' => $this['parameters'],
-            'stakeholders' => [
-                'owner' => $this['stakeholders']['owner'],
-                'current_approvers' => $this['stakeholders']['currentApprovers'],
-                'previous_approvers' => $this['stakeholders']['previousApprovers'] ?? [],
-            ],
-            'created_at' => $this['created_at'] ?? null,
-            'updated_at' => $this['updated_at'] ?? null,
-        ];
-    }
+foreach ($users as $user) {
+    DepartmentUser::create([
+        'department_id' => 1, // IT Department
+        'user_id' => $user['user_id'],
+        'job_level' => $user['job_level'],
+        'company_id' => 1,
+    ]);
 }
+```
 
-class ApprovalHistoryResource extends JsonResource
-{
-    public function toArray($request)
-    {
-        return [
-            'id' => $this['id'],
-            'title' => $this['title'],
-            'flag' => $this['flag'],
-            'notes' => $this['notes'],
-            'user' => [
-                'id' => $this['user_id'],
-                'name' => $this['user_name'],
-                'email' => $this['user_email'],
-            ],
-            'flow_step' => [
-                'id' => $this['flow_step_id'],
-                'name' => $this['flow_step_name'],
-            ],
-            'attached_files' => $this['attached_files'] ?? [],
-            'date_time' => $this['date_time'],
-        ];
+## Example 8: Exception Handling
+
+```php
+use AsetKita\LaravelApprovalWorkflow\Services\ApprovalHandler;
+
+$handler = new ApprovalHandler(1);
+
+try {
+    $result = $handler->approve($approvalId, $userId, $notes);
+    
+    // Success
+    return response()->json(['success' => true, 'result' => $result]);
+    
+} catch (\Exception $e) {
+    // Handle specific exceptions
+    switch ($e->getMessage()) {
+        case ApprovalHandler::EXC_USER_NOT_FOUND:
+            return response()->json(['error' => 'User not found'], 404);
+            
+        case ApprovalHandler::EXC_PERMISSION_DENIED:
+            return response()->json(['error' => 'Permission denied'], 403);
+            
+        case ApprovalHandler::EXC_APPROVAL_NOT_RUNNING:
+            return response()->json(['error' => 'Approval is not running'], 400);
+            
+        default:
+            return response()->json(['error' => $e->getMessage()], 500);
     }
 }
 ```
 
-## 6. Notification untuk Approval
+## Example 9: Notification
 
 ```php
-<?php
-
 namespace App\Notifications;
 
-use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Messages\DatabaseMessage;
 
-class ApprovalNotification extends Notification
+class ApprovalPendingNotification extends Notification
 {
-    use Queueable;
-
     protected $approval;
-    protected $type;
 
-    public function __construct($approval, $type = 'pending')
+    public function __construct($approval)
     {
         $this->approval = $approval;
-        $this->type = $type;
     }
 
     public function via($notifiable)
@@ -564,129 +640,28 @@ class ApprovalNotification extends Notification
 
     public function toMail($notifiable)
     {
-        $subject = $this->getSubject();
-        $message = $this->getMessage();
-
         return (new MailMessage)
-            ->subject($subject)
-            ->line($message)
-            ->action('View Approval', url('/approvals/' . $this->approval['id']))
-            ->line('Please review and take action on this approval.');
+            ->subject('Pending Approval Required')
+            ->line('You have a pending approval to review.')
+            ->action('Review Approval', url('/approvals/'.$this->approval->id))
+            ->line('Thank you!');
     }
 
-    public function toDatabase($notifiable)
+    public function toArray($notifiable)
     {
         return [
-            'approval_id' => $this->approval['id'],
-            'type' => $this->type,
-            'message' => $this->getMessage(),
-            'url' => '/approvals/' . $this->approval['id'],
+            'approval_id' => $this->approval->id,
+            'type' => $this->approval->flow->type,
+            'owner' => $this->approval->owner->name,
         ];
     }
+}
 
-    private function getSubject()
-    {
-        switch ($this->type) {
-            case 'pending':
-                return 'New Approval Required';
-            case 'approved':
-                return 'Approval Completed';
-            case 'rejected':
-                return 'Approval Rejected';
-            default:
-                return 'Approval Update';
-        }
-    }
-
-    private function getMessage()
-    {
-        $stepName = $this->approval['flow_step_name'] ?? 'Unknown Step';
-        
-        switch ($this->type) {
-            case 'pending':
-                return "You have a new approval request waiting for your action at step: {$stepName}";
-            case 'approved':
-                return "Your approval request has been approved at step: {$stepName}";
-            case 'rejected':
-                return "Your approval request has been rejected at step: {$stepName}";
-            default:
-                return "There's an update on your approval request";
-        }
-    }
+// Usage in controller
+foreach ($result['stakeholders']['currentApprovers'] as $approver) {
+    $user = User::find($approver['user_id']);
+    $user->notify(new ApprovalPendingNotification($approval));
 }
 ```
 
-## 7. Command untuk Rebuild Approvers
-
-```php
-<?php
-
-namespace App\Console\Commands;
-
-use Illuminate\Console\Command;
-use AsetKita\LaravelApprovalWorkflow\Services\ApprovalService;
-
-class RebuildApproversCommand extends Command
-{
-    protected $signature = 'approval:rebuild-approvers {--company-id=}';
-    protected $description = 'Rebuild approvers for all running approvals';
-
-    public function handle()
-    {
-        $companyId = $this->option('company-id');
-        
-        $service = app(ApprovalService::class);
-        
-        if ($companyId) {
-            $service->setCompanyId($companyId);
-        }
-        
-        $service->rebuildApprovers();
-        
-        $this->info('Approvers rebuilt successfully for company ID: ' . $service->getCompanyId());
-    }
-}
-```
-
-## 8. Event Listener untuk Notifications
-
-```php
-<?php
-
-namespace App\Listeners;
-
-use App\Notifications\ApprovalNotification;
-use AsetKita\LaravelApprovalWorkflow\Models\Approval;
-use Illuminate\Support\Facades\Notification;
-
-class SendApprovalNotifications
-{
-    public function handle($event)
-    {
-        // Assuming you have custom events for approval actions
-        $approval = $event->approval;
-        $type = $event->type;
-
-        // Get current approvers
-        if ($type === 'pending' && !empty($approval['stakeholders']['currentApprovers'])) {
-            $approvers = collect($approval['stakeholders']['currentApprovers']);
-            $userIds = $approvers->pluck('user_id');
-            
-            $users = \App\Models\User::whereIn('id', $userIds)->get();
-            
-            Notification::send($users, new ApprovalNotification($approval, 'pending'));
-        }
-
-        // Notify owner on completion
-        if (in_array($type, ['approved', 'rejected']) && $approval['stakeholders']['owner']) {
-            $owner = \App\Models\User::find($approval['stakeholders']['owner']['user_id']);
-            
-            if ($owner) {
-                $owner->notify(new ApprovalNotification($approval, $type));
-            }
-        }
-    }
-}
-```
-
-Contoh-contoh di atas menunjukkan implementasi lengkap dari Laravel Approval Workflow package dengan berbagai fitur seperti file upload, notification, dan UI yang user-friendly.
+These examples cover most common use cases! Copy and adapt them for your needs.

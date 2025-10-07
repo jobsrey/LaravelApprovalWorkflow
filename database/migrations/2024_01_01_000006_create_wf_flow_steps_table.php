@@ -13,12 +13,17 @@ return new class extends Migration
     {
         Schema::create('wf_flow_steps', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('flow_id')->constrained('wf_flows')->onDelete('cascade');
             $table->integer('order');
-            $table->string('name');
-            $table->text('condition')->nullable();
-            $table->timestamps();
-
+            $table->unsignedBigInteger('flow_id');
+            $table->string('name', 100)->nullable();
+            $table->string('condition', 1000)->nullable();
+            
+            $table->foreign('flow_id')
+                ->references('id')
+                ->on('wf_flows')
+                ->onDelete('cascade')
+                ->onUpdate('cascade');
+            
             $table->index(['flow_id', 'order']);
         });
     }

@@ -6,176 +6,118 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
-use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class ApprovalHistory extends Model implements HasMedia
 {
     use InteractsWithMedia;
 
+    /**
+     * The table associated with the model.
+     *
+     * @var string
+     */
     protected $table = 'wf_approval_histories';
 
+    /**
+     * Indicates if the model should be timestamped.
+     *
+     * @var bool
+     */
+    public $timestamps = false;
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
     protected $fillable = [
         'approval_id',
-        'flow_step_id',
         'user_id',
+        'flow_step_id',
         'title',
         'flag',
         'notes',
         'file',
-        'date_time'
+        'date_time',
     ];
 
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array<string, string>
+     */
     protected $casts = [
-        'date_time' => 'datetime',
+        'approval_id' => 'integer',
+        'user_id' => 'integer',
+        'flow_step_id' => 'integer',
+        'date_time' => 'integer',
     ];
 
-    // History flags constants
-    public const FLAG_CREATED = 'created';
-    public const FLAG_RESET = 'reset';
-    public const FLAG_APPROVED = 'approved';
-    public const FLAG_REJECTED = 'rejected';
-    public const FLAG_SYSTEM_REJECTED = 'system_rejected';
-    public const FLAG_DONE = 'done';
-    public const FLAG_SKIP = 'skip';
+    /**
+     * History flag constants
+     */
+    public const HFLAG_CREATED = 'created';
+    public const HFLAG_RESET = 'reset';
+    public const HFLAG_APPROVED = 'approved';
+    public const HFLAG_REJECTED = 'rejected';
+    public const HFLAG_SYSTEM_REJECTED = 'system_rejected';
+    public const HFLAG_DONE = 'done';
+    public const HFLAG_SKIP = 'skip';
 
+    /**
+     * Get the approval that owns the history.
+     */
     public function approval(): BelongsTo
     {
         return $this->belongsTo(Approval::class, 'approval_id');
     }
 
+    /**
+     * Get the user that owns the history.
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(config('approval-workflow.user_model', \App\Models\User::class), 'user_id');
+    }
+
+    /**
+     * Get the flow step that owns the history.
+     */
     public function flowStep(): BelongsTo
     {
         return $this->belongsTo(FlowStep::class, 'flow_step_id');
     }
 
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(config('auth.providers.users.model'), 'user_id');
-    }
-
     /**
-     * Register media collections for file attachments
+     * Register the media collections.
      */
     public function registerMediaCollections(): void
     {
-        $this->addMediaCollection('files')
-            ->acceptsMimeTypes([
-                'application/pdf',
-                'image/jpeg',
-                'image/png',
-                'image/gif',
-                'application/msword',
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                'application/vnd.ms-excel',
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'text/plain'
-            ]);
+        $this->addMediaCollection('attachments')
+            ->useDisk(config('approval-workflow.media_disk', 'public'));
     }
 
     /**
-     * Register media conversions
+     * Get all attachments.
      */
-    public function registerMediaConversions(Media $media = null): void
+    public function getAttachmentsAttribute()
     {
-        $this->addMediaConversion('thumb')
-            ->width(300)
-            ->height(300)
-            ->sharpen(10)
-            ->performOnCollections('files')
-            ->nonQueued();
-
-        $this->addMediaConversion('preview')
-            ->width(800)
-            ->height(600)
-            ->performOnCollections('files')
-            ->nonQueued();
+        return $this->getMedia('attachments');
     }
 
     /**
-     * Get all attached files
+     * Scope a query to only include histories with a specific flag.
      */
-    public function getAttachedFiles()
-    {
-        return $this->getMedia('files');
-    }
-
-    /**
-     * Add file attachment
-     */
-    public function addFile($file, $name = null)
-    {
-        $mediaItem = $this->addMediaFromRequest('file')
-            ->toMediaCollection('files');
-
-        if ($name) {
-            $mediaItem->update(['name' => $name]);
-        }
-
-        return $mediaItem;
-    }
-
-    /**
-     * Add file from path
-     */
-    public function addFileFromPath($path, $name = null)
-    {
-        $mediaItem = $this->addMedia($path)
-            ->toMediaCollection('files');
-
-        if ($name) {
-            $mediaItem->update(['name' => $name]);
-        }
-
-        return $mediaItem;
-    }
-
-    /**
-     * Get file URLs
-     */
-    public function getFileUrls()
-    {
-        return $this->getMedia('files')->map(function ($media) {
-            return [
-                'id' => $media->id,
-                'name' => $media->name,
-                'file_name' => $media->file_name,
-                'mime_type' => $media->mime_type,
-                'size' => $media->size,
-                'url' => $media->getUrl(),
-                'thumb_url' => $media->hasGeneratedConversion('thumb') ? $media->getUrl('thumb') : null,
-                'preview_url' => $media->hasGeneratedConversion('preview') ? $media->getUrl('preview') : null,
-            ];
-        });
-    }
-
-    /**
-     * Scope for filtering by flag
-     */
-    public function scopeByFlag($query, $flag)
+    public function scopeWithFlag($query, string $flag)
     {
         return $query->where('flag', $flag);
     }
 
     /**
-     * Scope for approval actions (approved/rejected)
+     * Scope a query to only include histories for approval.
      */
-    public function scopeApprovalActions($query)
+    public function scopeForApproval($query, int $approvalId)
     {
-        return $query->whereIn('flag', [
-            self::FLAG_APPROVED,
-            self::FLAG_REJECTED,
-            self::FLAG_SYSTEM_REJECTED
-        ]);
-    }
-
-    /**
-     * Scope for reset actions
-     */
-    public function scopeResetActions($query)
-    {
-        return $query->whereIn('flag', [
-            self::FLAG_CREATED,
-            self::FLAG_RESET
-        ]);
+        return $query->where('approval_id', $approvalId);
     }
 }

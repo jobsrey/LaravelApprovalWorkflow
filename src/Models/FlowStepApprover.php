@@ -5,14 +5,14 @@ namespace AsetKita\LaravelApprovalWorkflow\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ApprovalActiveUser extends Model
+class FlowStepApprover extends Model
 {
     /**
      * The table associated with the model.
      *
      * @var string
      */
-    protected $table = 'wf_approval_active_users';
+    protected $table = 'wf_flow_step_approvers';
 
     /**
      * Indicates if the model should be timestamped.
@@ -27,8 +27,9 @@ class ApprovalActiveUser extends Model
      * @var array<int, string>
      */
     protected $fillable = [
-        'approval_id',
-        'user_id',
+        'flow_step_id',
+        'type',
+        'data',
     ];
 
     /**
@@ -37,23 +38,14 @@ class ApprovalActiveUser extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'approval_id' => 'integer',
-        'user_id' => 'integer',
+        'flow_step_id' => 'integer',
     ];
 
     /**
-     * Get the approval that owns the active user.
+     * Get the flow step that owns the approver.
      */
-    public function approval(): BelongsTo
+    public function flowStep(): BelongsTo
     {
-        return $this->belongsTo(Approval::class, 'approval_id');
-    }
-
-    /**
-     * Get the user that owns the active user.
-     */
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(config('approval-workflow.user_model', \App\Models\User::class), 'user_id');
+        return $this->belongsTo(FlowStep::class, 'flow_step_id');
     }
 }

@@ -11,15 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('wf_flows', function (Blueprint $table) {
+        Schema::create('wf_approver_groups', function (Blueprint $table) {
             $table->id();
+            $table->string('name')->nullable();
             $table->unsignedBigInteger('company_id');
-            $table->string('type')->index();
-            $table->string('name');
-            $table->boolean('is_active')->default(true);
-            $table->timestamps();
-
-            $table->index(['company_id', 'type']);
+            
+            $table->index('company_id');
         });
     }
 
@@ -28,6 +25,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('wf_flows');
+        Schema::dropIfExists('wf_approver_groups');
     }
 };
