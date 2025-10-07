@@ -1,9 +1,9 @@
 {
   "name": "asetkita/laravel-approval-workflow",
-  "description": "A flexible and powerful approval workflow system for Laravel 12+ applications with Spatie Media Library support",
+  "description": "",
   "type": "library",
   "license": "MIT",
-  "keywords": ["laravel", "laravel-12", "approval", "workflow", "php", "spatie-medialibrary"],
+  "keywords": [],
   "authors": [
     {
       "name": "Rey",
@@ -11,14 +11,13 @@
     }
   ],
   "require": {
-    "php": "^8.2",
-    "laravel/framework": "^11.0|^12.0",
-    "spatie/laravel-medialibrary": "^11.0|^12.0",
-    "symfony/expression-language": "^6.0|^7.0"
+    "php": "^8.0",
+    "spatie/laravel-medialibrary": "^11.14",
+    "symfony/expression-language": "^5.4|^6.0|^7.0"
   },
   "require-dev": {
-    "phpunit/phpunit": "^10.0|^11.0",
-    "orchestra/testbench": "^9.0"
+    "phpunit/phpunit": "^9.0|^10.0",
+    "orchestra/testbench": "^7.0|^8.0|^9.0"
   },
   "autoload": {
     "psr-4": {
@@ -34,10 +33,7 @@
     "laravel": {
       "providers": [
         "AsetKita\\LaravelApprovalWorkflow\\ApprovalWorkflowServiceProvider"
-      ],
-      "aliases": {
-        "ApprovalWorkflow": "AsetKita\\LaravelApprovalWorkflow\\Facades\\ApprovalWorkflow"
-      }
+      ]
     }
   },
   "minimum-stability": "stable",
