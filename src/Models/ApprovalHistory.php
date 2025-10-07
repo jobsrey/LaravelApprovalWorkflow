@@ -26,7 +26,7 @@ class ApprovalHistory extends Model implements HasMedia
     ];
 
     protected $casts = [
-        'date_time' => 'timestamp',
+        'date_time' => 'datetime',
     ];
 
     // History flags constants
