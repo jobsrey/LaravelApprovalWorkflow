@@ -12,8 +12,6 @@
   ],
   "require": {
     "php": "^8.0",
-    "illuminate/support": "^9.0|^10.0|^11.0",
-    "illuminate/database": "^9.0|^10.0|^11.0",
     "spatie/laravel-medialibrary": "^10.0|^11.0",
     "symfony/expression-language": "^5.4|^6.0|^7.0"
   },
