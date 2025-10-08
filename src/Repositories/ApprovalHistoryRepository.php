@@ -68,7 +68,7 @@ class ApprovalHistoryRepository
     {
         $histories = ApprovalHistory::with(['user', 'flowStep'])
             ->where('approval_id', $approvalId)
-            ->orderBy('date_time', 'asc')
+            ->orderBy('date_time', 'desc')
             ->get();
 
         return $histories->map(function ($history) {
