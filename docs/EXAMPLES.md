@@ -139,6 +139,8 @@ class PurchaseRequestController extends Controller
         $handler = new ApprovalHandler(auth()->user()->company_id);
         $histories = $handler->getApprovalHistories($approvalId);
 
+        // The histories now include media_url field automatically
+        // media_url contains the URL of the last uploaded media file
         return response()->json(['histories' => $histories]);
     }
 }

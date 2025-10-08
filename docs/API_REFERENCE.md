@@ -241,7 +241,7 @@ $path = $handler->getApprovalPath(1);
 
 ### getApprovalHistories()
 
-Get all approval histories.
+Get all approval histories with media attachments.
 
 ```php
 public function getApprovalHistories(int $approvalId): array
@@ -250,11 +250,36 @@ public function getApprovalHistories(int $approvalId): array
 **Parameters:**
 - `$approvalId` (int) - Approval ID
 
-**Returns:** Array of history records
+**Returns:** Array of history records with the following fields:
+- `id` - History ID
+- `approval_id` - Approval ID
+- `flow_step_id` - Flow step ID
+- `flow_step_order` - Step order
+- `flow_step_flow_id` - Flow ID
+- `flow_step_name` - Step name
+- `flow_step_condition` - Step condition
+- `user_id` - User ID
+- `user_email` - User email
+- `user_name` - User name
+- `title` - Action title
+- `flag` - History flag (created, approved, rejected, etc.)
+- `notes` - Notes
+- `file` - Legacy file field (deprecated)
+- `date_time` - Timestamp
+- `media_url` - URL of the last uploaded media file (null if no media)
 
 **Example:**
 ```php
 $histories = $handler->getApprovalHistories(1);
+
+foreach ($histories as $history) {
+    echo "{$history['title']} by {$history['user_name']}\n";
+    
+    // Display media URL if exists
+    if ($history['media_url']) {
+        echo "Attachment: {$history['media_url']}\n";
+    }
+}
 ```
 
 ---

@@ -70,6 +70,11 @@ $histories = $handler->getApprovalHistories($approvalId);
 
 foreach ($histories as $history) {
     echo "{$history['title']} by {$history['user_name']}\n";
+    
+    // Display attachment URL if exists
+    if ($history['media_url']) {
+        echo "Attachment: {$history['media_url']}\n";
+    }
 }
 ```
 

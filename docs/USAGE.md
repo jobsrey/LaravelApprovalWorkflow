@@ -428,8 +428,11 @@ foreach ($histories as $history) {
     echo $history['user_name'];  // Who performed action
     echo $history['flag'];  // approved, rejected, created, etc.
     echo $history['date_time'];  // Timestamp
+    echo $history['media_url'];  // URL of last uploaded media file (null if no media)
 }
 ```
+
+**Note:** The `media_url` field contains the URL of the last uploaded media file for each history record. If no media was uploaded, it will be `null`.
 
 ### Get Approval Path
 

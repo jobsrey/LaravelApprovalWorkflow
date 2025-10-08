@@ -381,11 +381,22 @@ $result = $handler->rejectBySystem($approvalId, $relatedUserId, $notes, $file);
 ```
 
 ### getApprovalHistories()
-Ambil semua history approval.
+Ambil semua history approval beserta URL media attachment terakhir.
 
 ```php
 $histories = $handler->getApprovalHistories($approvalId);
+
+foreach ($histories as $history) {
+    echo "{$history['title']} oleh {$history['user_name']}\n";
+    
+    // Tampilkan URL media jika ada
+    if ($history['media_url']) {
+        echo "File: {$history['media_url']}\n";
+    }
+}
 ```
+
+**Catatan:** Field `media_url` berisi URL file media terakhir yang diupload untuk setiap history record. Jika tidak ada media, nilainya `null`.
 
 ### getApprovalPath()
 Ambil path approval dengan status.

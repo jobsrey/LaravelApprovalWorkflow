@@ -290,7 +290,25 @@ public function getHistory($approvalId)
     $handler = new ApprovalHandler(auth()->user()->company_id);
     $histories = $handler->getApprovalHistories($approvalId);
 
-    // Enrich histories with attachment URLs
+    // The media_url field is automatically included for each history
+    // It contains the URL of the last uploaded media file
+    return response()->json(['histories' => $histories]);
+}
+```
+
+**Note:** Since version with media library integration, `getApprovalHistories()` automatically includes the `media_url` field containing the URL of the last uploaded media file for each history record.
+
+#### Get All Attachments (Optional)
+
+If you need to get all attachments (not just the last one), you can manually enrich the data:
+
+```php
+public function getHistoryWithAllAttachments($approvalId)
+{
+    $handler = new ApprovalHandler(auth()->user()->company_id);
+    $histories = $handler->getApprovalHistories($approvalId);
+
+    // Enrich histories with all attachment URLs
     foreach ($histories as &$history) {
         $historyModel = ApprovalHistory::find($history['id']);
         $history['attachments'] = $historyModel->getMedia('attachments')->map(function($media) {

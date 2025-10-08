@@ -66,30 +66,34 @@ class ApprovalHistoryRepository
      */
     public function getAllByApprovalId(int $approvalId): array
     {
-        return DB::table('wf_approval_histories as wah')
-            ->leftJoin('users as u', 'u.id', '=', 'wah.user_id')
-            ->leftJoin('wf_flow_steps as wfs', 'wfs.id', '=', 'wah.flow_step_id')
-            ->where('wah.approval_id', $approvalId)
-            ->select([
-                'wah.id',
-                'wah.approval_id',
-                'wah.flow_step_id',
-                'wfs.order as flow_step_order',
-                'wfs.flow_id as flow_step_flow_id',
-                'wfs.name as flow_step_name',
-                'wfs.condition as flow_step_condition',
-                'wah.user_id',
-                'u.email as user_email',
-                'u.name as user_name',
-                'wah.title',
-                'wah.flag',
-                'wah.notes',
-                'wah.file',
-                'wah.date_time',
-            ])
-            ->orderBy('wah.date_time', 'asc')
-            ->get()
-            ->map(fn($history) => (array) $history)
-            ->toArray();
+        $histories = ApprovalHistory::with(['user', 'flowStep'])
+            ->where('approval_id', $approvalId)
+            ->orderBy('date_time', 'asc')
+            ->get();
+
+        return $histories->map(function ($history) {
+            // Get the last media item from attachments collection
+            $lastMedia = $history->getMedia('attachments')->last();
+            $mediaUrl = $lastMedia ? $lastMedia->getUrl() : null;
+
+            return [
+                'id' => $history->id,
+                'approval_id' => $history->approval_id,
+                'flow_step_id' => $history->flow_step_id,
+                'flow_step_order' => $history->flowStep?->order,
+                'flow_step_flow_id' => $history->flowStep?->flow_id,
+                'flow_step_name' => $history->flowStep?->name,
+                'flow_step_condition' => $history->flowStep?->condition,
+                'user_id' => $history->user_id,
+                'user_email' => $history->user?->email,
+                'user_name' => $history->user?->name,
+                'title' => $history->title,
+                'flag' => $history->flag,
+                'notes' => $history->notes,
+                'file' => $history->file,
+                'date_time' => $history->date_time,
+                'media_url' => $mediaUrl,
+            ];
+        })->toArray();
     }
 }
