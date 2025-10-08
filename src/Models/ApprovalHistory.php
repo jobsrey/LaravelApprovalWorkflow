@@ -6,10 +6,19 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
+use App\Traits\HasHashedId;
 
 class ApprovalHistory extends Model implements HasMedia
 {
-    use InteractsWithMedia;
+    use InteractsWithMedia, HasHashedId;
+
+    protected $hideOriginalId = false; // Sembunyikan ID asli dari JSON
+    protected $showHashedId = true; // Tampilkan hashed_id di JSON
+    protected $useHashedRouteKey = true; // Gunakan hashed ID untuk route binding
+
+    // Konfigurasi hash (opsional)
+    protected $hashSalt = '262ce5db2fa344d775fd72147ce39327c03c7dd43c3fef158c9263cbaf70fc31'; // Salt khusus untuk Company
+    protected $hashMinLength = 32; // Minimum panjang hash
 
     /**
      * The table associated with the model.

@@ -78,6 +78,7 @@ class ApprovalHistoryRepository
 
             return [
                 'id' => $history->id,
+                'hashed_id' => $history->hashed_id,
                 'approval_id' => $history->approval_id,
                 'flow_step_id' => $history->flow_step_id,
                 'flow_step_order' => $history->flowStep?->order,
