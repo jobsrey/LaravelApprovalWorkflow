@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     /**
      * Run the migrations.
      */
@@ -16,13 +15,14 @@ return new class extends Migration
             $table->unsignedBigInteger('flow_step_id');
             $table->enum('type', ['USER', 'GROUP', 'SYSTEM_GROUP']);
             $table->string('data')->nullable();
-            
+            $table->timestamps();
+
             $table->foreign('flow_step_id')
                 ->references('id')
                 ->on('wf_flow_steps')
                 ->onDelete('cascade')
                 ->onUpdate('cascade');
-            
+
             $table->index('flow_step_id');
         });
     }
