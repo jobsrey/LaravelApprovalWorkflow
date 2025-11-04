@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     /**
      * Run the migrations.
      */
@@ -21,18 +20,19 @@ return new class extends Migration
             $table->string('notes', 100)->nullable();
             $table->string('file', 100)->nullable();
             $table->integer('date_time')->nullable();
-            
+            $table->timestamps();
+
             $table->foreign('approval_id')
                 ->references('id')
                 ->on('wf_approvals')
                 ->onDelete('cascade')
                 ->onUpdate('cascade');
-            
+
             $table->foreign('flow_step_id')
                 ->references('id')
                 ->on('wf_flow_steps')
                 ->onUpdate('cascade');
-            
+
             $table->index(['approval_id', 'date_time']);
         });
     }
