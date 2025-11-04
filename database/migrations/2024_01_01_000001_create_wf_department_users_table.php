@@ -17,6 +17,8 @@ return new class extends Migration {
             $table->enum('job_level', ['STAFF', 'MANAGER', 'HEAD']);
             $table->unsignedBigInteger('company_id');
             $table->timestamps();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
 
             $table->index(['department_id', 'user_id']);
             $table->index('company_id');

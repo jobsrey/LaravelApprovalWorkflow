@@ -16,6 +16,8 @@ return new class extends Migration {
             $table->enum('type', ['USER', 'GROUP', 'SYSTEM_GROUP']);
             $table->string('data')->nullable();
             $table->timestamps();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
 
             $table->foreign('flow_step_id')
                 ->references('id')

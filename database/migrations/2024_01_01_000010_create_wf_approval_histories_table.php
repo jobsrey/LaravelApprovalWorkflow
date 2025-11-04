@@ -21,6 +21,8 @@ return new class extends Migration {
             $table->string('file', 100)->nullable();
             $table->integer('date_time')->nullable();
             $table->timestamps();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
 
             $table->foreign('approval_id')
                 ->references('id')

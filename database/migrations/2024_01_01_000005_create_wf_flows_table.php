@@ -17,6 +17,8 @@ return new class extends Migration {
             $table->tinyInteger('is_active')->default(0);
             $table->string('label', 100)->nullable();
             $table->timestamps();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
 
             $table->index(['company_id', 'type']);
         });

@@ -17,6 +17,8 @@ return new class extends Migration {
             $table->string('name', 100)->nullable();
             $table->string('condition', 1000)->nullable();
             $table->timestamps();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
 
             $table->foreign('flow_id')
                 ->references('id')

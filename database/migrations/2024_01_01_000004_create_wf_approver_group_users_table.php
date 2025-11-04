@@ -15,6 +15,8 @@ return new class extends Migration {
             $table->unsignedBigInteger('approver_group_id');
             $table->unsignedBigInteger('user_id');
             $table->timestamps();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
 
             $table->foreign('approver_group_id')
                 ->references('id')

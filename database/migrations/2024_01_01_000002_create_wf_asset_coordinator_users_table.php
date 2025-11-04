@@ -16,6 +16,8 @@ return new class extends Migration {
             $table->unsignedBigInteger('user_id');
             $table->unsignedBigInteger('company_id');
             $table->timestamps();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
 
             $table->index(['asset_category_id', 'user_id']);
             $table->index('company_id');
