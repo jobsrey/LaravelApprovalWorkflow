@@ -509,11 +509,21 @@ class ApprovalHandler
             // Get approvers for next step
             $approvers = $this->flowRepository->getStepUsers($nextStep['id'], $approval['parameters']);
 
+            // Get owner/requestor
+            $owner = $this->approvalRepository->getOwner($approvalId);
+
+            // Filter out requestor from approvers
+            if ($owner) {
+                $approvers = array_filter($approvers, function($approver) use ($owner) {
+                    return $approver['id'] != $owner['user_id'];
+                });
+            }
+
             // Assign approvers
             $this->approvalRepository->assignApprovers($approvalId, $approvers);
 
             if (count($approvers) <= 0) {
-                // Skip step if no approvers
+                // Skip step if no approvers (after filtering)
                 $this->historyRepository->insert(
                     $approvalId,
                     $nextStep['id'],
