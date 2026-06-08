@@ -517,6 +517,9 @@ class ApprovalHandler
                 $approvers = array_filter($approvers, function($approver) use ($owner) {
                     return $approver['id'] != $owner['user_id'];
                 });
+
+                // Re-index array to ensure sequential keys
+                $approvers = array_values($approvers);
             }
 
             // Assign approvers
