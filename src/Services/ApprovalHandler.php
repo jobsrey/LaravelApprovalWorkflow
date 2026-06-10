@@ -10,6 +10,7 @@ use AsetKita\LaravelApprovalWorkflow\Repositories\UserRepository;
 use AsetKita\LaravelApprovalWorkflow\Models\ApprovalHistory;
 use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 
 class ApprovalHandler
 {
@@ -492,12 +493,22 @@ class ApprovalHandler
                 }
 
                 // Check condition
-                $expressionLanguage = new ExpressionLanguage();
-                $result = $expressionLanguage->evaluate($condition, $approval['parameters'] ?? []);
-                
-                if (is_bool($result) && $result === true) {
-                    $nextStep = $step;
-                    break;
+                try {
+                    $expressionLanguage = new ExpressionLanguage();
+                    $result = $expressionLanguage->evaluate($condition, $approval['parameters'] ?? []);
+                    
+                    if (is_bool($result) && $result === true) {
+                        $nextStep = $step;
+                        break;
+                    }
+                } catch (\Symfony\Component\ExpressionLanguage\SyntaxError $e) {
+                    // Log error and treat condition as false
+                    Log::warning('Invalid expression condition in workflow step', [
+                        'step_id' => $step['id'],
+                        'condition' => $condition,
+                        'error' => $e->getMessage(),
+                    ]);
+                    continue; // Skip this step
                 }
             }
         }
@@ -578,11 +589,21 @@ class ApprovalHandler
             }
 
             // Check condition
-            $expressionLanguage = new ExpressionLanguage();
-            $result = $expressionLanguage->evaluate($condition, $approval['parameters'] ?? []);
-            
-            if (is_bool($result) && $result === true) {
-                $filteredSteps[] = $step;
+            try {
+                $expressionLanguage = new ExpressionLanguage();
+                $result = $expressionLanguage->evaluate($condition, $approval['parameters'] ?? []);
+                
+                if (is_bool($result) && $result === true) {
+                    $filteredSteps[] = $step;
+                }
+            } catch (\Symfony\Component\ExpressionLanguage\SyntaxError $e) {
+                // Log error and skip step with invalid condition
+                Log::warning('Invalid expression condition in workflow step', [
+                    'step_id' => $step['id'],
+                    'condition' => $condition,
+                    'error' => $e->getMessage(),
+                ]);
+                continue; // Skip this step
             }
         }
 
