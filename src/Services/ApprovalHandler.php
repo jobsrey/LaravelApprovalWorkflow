@@ -83,6 +83,27 @@ class ApprovalHandler
         
         if ($flow->is_active != 0) {
             $this->checkNextStep($approvalId);
+            
+            // AUTO-APPROVE: Cek apakah requestor ada di currentApprovers
+            // Jika ada, auto-approve step tersebut
+            $nextApprovers = $this->approvalRepository->getCurrentApprovers($approvalId);
+            $owner = $this->approvalRepository->getOwner($approvalId);
+            
+            if ($owner && $nextApprovers) {
+                $requestorInApprovers = false;
+                foreach ($nextApprovers as $approver) {
+                    $approverId = $approver['user_id'] ?? $approver['id'] ?? null;
+                    if ($approverId == $owner['user_id']) {
+                        $requestorInApprovers = true;
+                        break;
+                    }
+                }
+                
+                // Jika requestor ada di approvers, auto-approve
+                if ($requestorInApprovers) {
+                    $this->approve($approvalId, $owner['user_id'], 'Auto-approve karena requestor', null);
+                }
+            }
         } else {
             // Mark as approved if flow is not active
             $this->approvalRepository->update($approvalId, 'APPROVED', null, null);
