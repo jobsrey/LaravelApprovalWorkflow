@@ -8,7 +8,6 @@ use AsetKita\LaravelApprovalWorkflow\Repositories\ApprovalRepository;
 use AsetKita\LaravelApprovalWorkflow\Repositories\FlowRepository;
 use AsetKita\LaravelApprovalWorkflow\Repositories\UserRepository;
 use AsetKita\LaravelApprovalWorkflow\Models\ApprovalHistory;
-use AsetKita\LaravelApprovalWorkflow\Models\ApproverGroupUser;
 use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -527,23 +526,9 @@ class ApprovalHandler
             // Filter out requestor from approvers
             if ($owner) {
                 $approvers = array_filter($approvers, function($approver) use ($owner) {
-                    // For USER and SYSTEM_GROUP types, filter by user_id
-                    if (in_array($approver['type'] ?? 'USER', ['USER', 'SYSTEM_GROUP'])) {
-                        return $approver['id'] != $owner['user_id'];
-                    }
-                    
-                    // For GROUP type, check if requestor is a member of the group
-                    if (($approver['type'] ?? '') === 'GROUP') {
-                        $isRequestorInGroup = ApproverGroupUser::where('approver_group_id', $approver['source_id'])
-                            ->where('user_id', $owner['user_id'])
-                            ->exists();
-                        
-                        // If requestor is in the group, skip this approver
-                        return !$isRequestorInGroup;
-                    }
-                    
-                    // Default: keep the approver
-                    return true;
+                    // Simple filter: skip if this approver's user_id matches requestor's user_id
+                    // This works for all types: USER, GROUP, and SYSTEM_GROUP
+                    return $approver['id'] != $owner['user_id'];
                 });
 
                 // Re-index array to ensure sequential keys
