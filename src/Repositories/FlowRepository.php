@@ -39,48 +39,71 @@ class FlowRepository
     {
         $approvers = FlowStepApprover::where('flow_step_id', $stepId)->get();
         
-        $userIds = [];
+        $users = [];
         
         foreach ($approvers as $approver) {
             // Handle Type USER
             if ($approver->type === 'USER') {
-                $userIds[] = $approver->data;
+                $userModel = config('approval-workflow.user_model', \App\Models\User::class);
+                $user = $userModel::find($approver->data);
+                if ($user) {
+                    $users[] = [
+                        'id' => $user->id,
+                        'email' => $user->email ?? null,
+                        'name' => $user->name ?? null,
+                        'type' => 'USER',
+                        'source_id' => $approver->data,
+                    ];
+                }
             }
             // Handle Type GROUP
             elseif ($approver->type === 'GROUP') {
                 $groupUserIds = ApproverGroupUser::where('approver_group_id', $approver->data)
                     ->pluck('user_id')
                     ->toArray();
-                $userIds = array_merge($userIds, $groupUserIds);
+                
+                $userModel = config('approval-workflow.user_model', \App\Models\User::class);
+                $groupUsers = $userModel::whereIn('id', $groupUserIds)->get();
+                
+                foreach ($groupUsers as $user) {
+                    $users[] = [
+                        'id' => $user->id,
+                        'email' => $user->email ?? null,
+                        'name' => $user->name ?? null,
+                        'type' => 'GROUP',
+                        'source_id' => $approver->data,
+                    ];
+                }
             }
             // Handle Type SYSTEM_GROUP
             elseif ($approver->type === 'SYSTEM_GROUP') {
                 $data = $approver->data;
+                $systemUserIds = [];
                 
                 // Handle department-manager
                 if ($data === 'department-manager') {
                     $overrideUserId = $this->getParamValue($approvalParameters, 'overrideManagerUserId');
                     if ($overrideUserId) {
-                        $userIds[] = $overrideUserId;
+                        $systemUserIds[] = $overrideUserId;
                     } else {
                         $departmentUserIds = DepartmentUser::where('department_id', $this->getParamValue($approvalParameters, 'departmentId'))
                             ->where('job_level', 'MANAGER')
                             ->pluck('user_id')
                             ->toArray();
-                        $userIds = array_merge($userIds, $departmentUserIds);
+                        $systemUserIds = array_merge($systemUserIds, $departmentUserIds);
                     }
                 }
                 // Handle department-head
                 elseif ($data === 'department-head') {
                     $overrideUserId = $this->getParamValue($approvalParameters, 'overrideHeadUserId');
                     if ($overrideUserId) {
-                        $userIds[] = $overrideUserId;
+                        $systemUserIds[] = $overrideUserId;
                     } else {
                         $departmentUserIds = DepartmentUser::where('department_id', $this->getParamValue($approvalParameters, 'departmentId'))
                             ->where('job_level', 'HEAD')
                             ->pluck('user_id')
                             ->toArray();
-                        $userIds = array_merge($userIds, $departmentUserIds);
+                        $systemUserIds = array_merge($systemUserIds, $departmentUserIds);
                     }
                 }
                 // Handle department-staff
@@ -89,51 +112,60 @@ class FlowRepository
                         ->where('job_level', 'STAFF')
                         ->pluck('user_id')
                         ->toArray();
-                    $userIds = array_merge($userIds, $departmentUserIds);
+                    $systemUserIds = array_merge($systemUserIds, $departmentUserIds);
                 }
                 // Handle asset-coordinator
                 elseif ($data === 'asset-coordinator') {
                     $assetUserIds = AssetCoordinatorUser::where('asset_category_id', $this->getParamValue($approvalParameters, 'assetCategoryId'))
                         ->pluck('user_id')
                         ->toArray();
-                    $userIds = array_merge($userIds, $assetUserIds);
+                    $systemUserIds = array_merge($systemUserIds, $assetUserIds);
                 }
                 // Handle origin-asset-user
                 elseif ($data === 'origin-asset-user') {
                     $userId = $this->getParamValue($approvalParameters, 'originAssetUserId');
                     if ($userId) {
-                        $userIds[] = $userId;
+                        $systemUserIds[] = $userId;
                     }
                 }
                 // Handle destination-asset-user
                 elseif ($data === 'destination-asset-user') {
                     $userId = $this->getParamValue($approvalParameters, 'destinationAssetUserId');
                     if ($userId) {
-                        $userIds[] = $userId;
+                        $systemUserIds[] = $userId;
                     }
+                }
+                
+                $userModel = config('approval-workflow.user_model', \App\Models\User::class);
+                $systemUsers = $userModel::whereIn('id', $systemUserIds)->get();
+                
+                foreach ($systemUsers as $user) {
+                    $users[] = [
+                        'id' => $user->id,
+                        'email' => $user->email ?? null,
+                        'name' => $user->name ?? null,
+                        'type' => 'SYSTEM_GROUP',
+                        'source_id' => $approver->data,
+                    ];
                 }
             }
         }
         
-        if (empty($userIds)) {
+        if (empty($users)) {
             return [];
         }
         
-        // Get unique user IDs
-        $userIds = array_unique($userIds);
+        // Remove duplicates based on user ID
+        $uniqueUsers = [];
+        $seenIds = [];
+        foreach ($users as $user) {
+            if (!in_array($user['id'], $seenIds)) {
+                $uniqueUsers[] = $user;
+                $seenIds[] = $user['id'];
+            }
+        }
         
-        // Return users with their details
-        $userModel = config('approval-workflow.user_model', \App\Models\User::class);
-        return $userModel::whereIn('id', $userIds)
-            ->get()
-            ->map(function ($user) {
-                return [
-                    'id' => $user->id,
-                    'email' => $user->email ?? null,
-                    'name' => $user->name ?? null,
-                ];
-            })
-            ->toArray();
+        return $uniqueUsers;
     }
 
     /**
