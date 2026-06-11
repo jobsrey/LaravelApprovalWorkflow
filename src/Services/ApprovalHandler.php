@@ -153,16 +153,17 @@ class ApprovalHandler
             $file
         );
 
-        // Process to next step
-        $previousApprovers = $this->approvalRepository->getCurrentApprovers($approvalId);
+        // SINGLE APPROVAL: Langsung lanjut ke step selanjutnya
+        // tanpa menunggu approver lain
         $this->checkNextStep($approvalId);
+        
         $nextApprovers = $this->approvalRepository->getCurrentApprovers($approvalId);
 
         // Return current status
         $status = $this->approvalRepository->getCurrentStatus($approvalId);
         $status['stakeholders'] = [
             'owner' => $this->approvalRepository->getOwner($approvalId),
-            'previousApprovers' => $previousApprovers,
+            'previousApprovers' => [$user], // User yang baru saja approve
             'currentApprovers' => $nextApprovers,
         ];
         
@@ -416,6 +417,10 @@ class ApprovalHandler
                 $approvalStep['type'] = 'passed';
             } elseif ($index == $currentStepIndex) {
                 $approvalStep['type'] = 'current';
+                
+                // For current step, use actual approvers from database (wf_approval_active_users)
+                // This ensures frontend displays only users who can actually approve
+                $approvalStep['approvers'] = $this->approvalRepository->getCurrentApprovers($approvalId);
             } else {
                 $approvalStep['type'] = 'incoming';
             }
@@ -520,26 +525,11 @@ class ApprovalHandler
             // Get approvers for next step
             $approvers = $this->flowRepository->getStepUsers($nextStep['id'], $approval['parameters']);
 
-            // Get owner/requestor
-            $owner = $this->approvalRepository->getOwner($approvalId);
-
-            // Filter out requestor from approvers
-            if ($owner) {
-                $approvers = array_filter($approvers, function($approver) use ($owner) {
-                    // Simple filter: skip if this approver's user_id matches requestor's user_id
-                    // This works for all types: USER, GROUP, and SYSTEM_GROUP
-                    return $approver['id'] != $owner['user_id'];
-                });
-
-                // Re-index array to ensure sequential keys
-                $approvers = array_values($approvers);
-            }
-
             // Assign approvers
             $this->approvalRepository->assignApprovers($approvalId, $approvers);
 
             if (count($approvers) <= 0) {
-                // Skip step if no approvers (after filtering)
+                // Skip step if no approvers
                 $this->historyRepository->insert(
                     $approvalId,
                     $nextStep['id'],
