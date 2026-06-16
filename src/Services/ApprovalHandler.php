@@ -83,12 +83,12 @@ class ApprovalHandler
         
         if ($flow->is_active != 0) {
             $this->checkNextStep($approvalId);
-            
+
             // AUTO-APPROVE: Cek apakah requestor ada di currentApprovers
             // Jika ada, auto-approve step tersebut
             $nextApprovers = $this->approvalRepository->getCurrentApprovers($approvalId);
             $owner = $this->approvalRepository->getOwner($approvalId);
-            
+
             if ($owner && $nextApprovers) {
                 $requestorInApprovers = false;
                 foreach ($nextApprovers as $approver) {
@@ -98,16 +98,20 @@ class ApprovalHandler
                         break;
                     }
                 }
-                
+
                 // Jika requestor ada di approvers, auto-approve
                 if ($requestorInApprovers) {
                     $this->approve($approvalId, $owner['user_id'], 'Auto-approve karena requestor', null);
+
+                    // Ambil ulang nextApprovers setelah auto-approve untuk memastikan
+                    // stakeholders yang dikembalikan sudah benar (step setelah skip)
+                    $nextApprovers = $this->approvalRepository->getCurrentApprovers($approvalId);
                 }
             }
         } else {
             // Mark as approved if flow is not active
             $this->approvalRepository->update($approvalId, 'APPROVED', null, null);
-            
+
             $this->historyRepository->insert(
                 $approvalId,
                 null,
@@ -117,9 +121,9 @@ class ApprovalHandler
                 null,
                 null
             );
+
+            $nextApprovers = [];
         }
-        
-        $nextApprovers = $this->approvalRepository->getCurrentApprovers($approvalId);
 
         // Return current status
         $status = $this->approvalRepository->getCurrentStatus($approvalId);
@@ -177,7 +181,9 @@ class ApprovalHandler
         // SINGLE APPROVAL: Langsung lanjut ke step selanjutnya
         // tanpa menunggu approver lain
         $this->checkNextStep($approvalId);
-        
+
+        // Ambil ulang nextApprovers setelah checkNextStep untuk memastikan
+        // stakeholders yang dikembalikan sudah benar (setelah semua skip step selesai)
         $nextApprovers = $this->approvalRepository->getCurrentApprovers($approvalId);
 
         // Return current status
@@ -332,6 +338,8 @@ class ApprovalHandler
             $file
         );
 
+        // Ambil ulang nextApprovers setelah checkNextStep untuk memastikan
+        // stakeholders yang dikembalikan sudah benar (setelah semua skip step selesai)
         $nextApprovers = $this->approvalRepository->getCurrentApprovers($approvalId);
 
         // Return current status
